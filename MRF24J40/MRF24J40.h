@@ -271,7 +271,7 @@ namespace MRF24J40
 
 			// Copy data
 			for (int q = 0; q < len; q++)
-			WriteRegisterLong(i++, data[q]);
+				WriteRegisterLong(i++, data[q]);
 			
 			// Send message
 			WriteRegisterShort(MRF_TXNCON, (1<<MRF_TXNACKREQ | 1<<MRF_TXNTRIG));
@@ -291,12 +291,7 @@ namespace MRF24J40
 		{
 			WriteRegisterShort(MRF_SOFTRST, 0x7);
 			while (ReadRegisterShort(MRF_SOFTRST) & 0x7)
-			;
-			//{
-			//_delay_ms(50);
-			//PINB = (1 << 2);
-			//; // Wait here...
-			//}
+				;
 		}
 
 		void Init(uint16_t panid, uint16_t address, uint8_t channel)

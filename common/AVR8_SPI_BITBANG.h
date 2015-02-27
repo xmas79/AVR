@@ -26,18 +26,18 @@ namespace AVR8
 		public:
 		__attribute__((always_inline)) void SetClockLineHigh() { _SFR_IO8(CLOCK_PORT) |= _BV(CLOCK_PIN); }
 		__attribute__((always_inline)) void SetClockLineLow() { _SFR_IO8(CLOCK_PORT) &= ~_BV(CLOCK_PIN); }
-		__attribute__((always_inline)) void SetOutputLine(bool high) { _SFR_IO8(OUT_PORT) &= ~(_BV(OUT_PIN)); if (high) _SFR_IO8(OUT_PORT) |= _BV(OUT_PIN); };
-		__attribute__((always_inline)) uint8_t GetInputLine() { return (_SFR_IO8(IN_PORT) & _BV(IN_PIN)) ? 0x01 : 0x00; };
+		__attribute__((always_inline)) void SetOutputLine(bool high) { _SFR_IO8(OUT_PORT) &= ~(_BV(OUT_PIN)); if (high) _SFR_IO8(OUT_PORT) |= _BV(OUT_PIN);};
+		__attribute__((always_inline)) uint8_t GetInputLine() { return (_SFR_IO8(IN_PORT) & _BV(IN_PIN)) ? 0x01 : 0x00; }
 		__attribute__((always_inline)) void PrepareSPI() 
 		{  
 			switch (SPI_mode)
 			{
-				case 0:
-				case 1:
+				case SPI_MODE_0:
+				case SPI_MODE_1:
 					_SFR_IO8(CLOCK_PORT) &= ~_BV(CLOCK_PIN);
 					break;
-				case 2:
-				case 3:
+				case SPI_MODE_2:
+				case SPI_MODE_3:
 					_SFR_IO8(CLOCK_PORT) |= _BV(CLOCK_PIN);
 					break;
 			}
