@@ -12,16 +12,16 @@ namespace ADT7310
 {
 	enum OperationMode
 	{
-		Continuous =	0b00000000,
-		OneShot =		0b00100000,
-		OneSPS =		0b01000000,
-		Shutdown =		0b01100000
+		Continuous =	0x00,
+		OneShot =		0x20,
+		OneSPS =		0x40,
+		Shutdown =		0x60
 	};
 	
 	enum Resolution
 	{
-		Bits13 =		0b00000000,
-		Bits16 =		0b10000000
+		Bits13 =		0x00,
+		Bits16 =		0x80
 	};
 	
 	const uint8_t statusRegister = 0x00;
@@ -34,7 +34,7 @@ namespace ADT7310
 		public:
 		void SetMode(OperationMode mode, Resolution resolution)
 		{
-			uint8_t command = 0b00000000 + (configurationRegister << 3);
+			uint8_t command = 0x00 + (configurationRegister << 3);
 			uint8_t value = mode + resolution;
 			
 			this->PrepareSPI();
@@ -50,7 +50,7 @@ namespace ADT7310
 		}
 		int16_t ReadTemperature()
 		{
-			uint8_t command = 0b01000000 + (temperatureRegister << 3);
+			uint8_t command = 0x40 + (temperatureRegister << 3);
 			
 			this->PrepareSPI();
 			this->SelectDevice();
