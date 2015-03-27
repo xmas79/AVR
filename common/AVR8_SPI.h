@@ -15,7 +15,7 @@ namespace AVR8
 	class AVR8_SPI
 	{
 	public:
-		inline void PrepareSPI(){};
+		__attribute__((always_inline)) void PrepareSPI(){};
 			
 		inline uint8_t SPISend(uint8_t cData)
 		{
