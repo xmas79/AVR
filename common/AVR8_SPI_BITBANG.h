@@ -26,7 +26,7 @@ namespace AVR8
 		public:
 		__attribute__((always_inline)) void SetClockLineHigh() { _SFR_IO8(CLOCK_PORT) |= _BV(CLOCK_PIN); }
 		__attribute__((always_inline)) void SetClockLineLow() { _SFR_IO8(CLOCK_PORT) &= ~_BV(CLOCK_PIN); }
-		__attribute__((always_inline)) void SetOutputLine(bool high) { _SFR_IO8(OUT_PORT) &= ~(_BV(OUT_PIN)); if (high) _SFR_IO8(OUT_PORT) |= _BV(OUT_PIN);};
+		__attribute__((always_inline)) void SetOutputLine(bool high) { if (high) _SFR_IO8(OUT_PORT) |= _BV(OUT_PIN); else _SFR_IO8(OUT_PORT) &= ~(_BV(OUT_PIN)); };
 		__attribute__((always_inline)) uint8_t GetInputLine() { return (_SFR_IO8(IN_PORT) & _BV(IN_PIN)) ? 0x01 : 0x00; }
 		__attribute__((always_inline)) void PrepareSPI() 
 		{  
@@ -65,7 +65,7 @@ namespace AVR8
 						// Data change phase
 						this->SetClockLineLow();
 					}
-					return cData;
+					break;
 					
 				case 3:
 					// Loop through all 8 bits
@@ -83,9 +83,10 @@ namespace AVR8
 						// Read input bit, prepare next output bit
 						cData = (cData << 1) | this->GetInputLine();
 					}
-			
-					return cData;
+					break;
 			}
+
+			return cData;
 		}
 	};
 }
