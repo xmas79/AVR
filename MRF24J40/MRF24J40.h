@@ -15,24 +15,26 @@
 #include <stdint.h>
 #include <util/delay.h>
 
+#include "MACPacket.h"
+
 namespace MRF24J40
 {
-	typedef struct _mrf_rx_info {
-		uint8_t frame_length;
-		uint8_t lqi;
-		uint8_t rssi;
-	} mrf_rx_info_t;
-
-	/**
-	* Based on the TXSTAT register, but "better"
-	*/
-	typedef struct _mrf_tx_info {
-		uint8_t tx_ok:1;
-		uint8_t retries:2;
-		uint8_t channel_busy:1;
-	} mrf_tx_info_t;
+	const int TX_RETRIES = 0;
+	const int TX_OK = 2;
+	const int CHANNEL_BUSY = 3;
+	const int TX = 4;
+	const int RX = 5;
 
 	const int MRF_RXMCR = 0x00;
+	const int PROMI = 0;
+	const int ERRPKT = 1;
+	const int COORD = 2;
+	const int PANCOORD = 3;
+	//const int Reserved = 4;
+	const int NOACKRSP = 5;
+	//const int Reserved = 6;
+	//const int Reserved = 7;
+
 	const int MRF_PANIDL = 0x01;
 	const int MRF_PANIDH = 0x02;
 	const int MRF_SADRL = 0x03;
@@ -45,7 +47,17 @@ namespace MRF24J40
 	const int MRF_EADR5 = 0x0A;
 	const int MRF_EADR6 = 0x0B;
 	const int MRF_EADR7 = 0x0C;
+
 	const int MRF_RXFLUSH = 0x0D;
+	const int RXFLUSH = 0;
+	const int BCNONLY = 1;
+	const int DATAONLY = 2;
+	const int CMDONLY = 3;
+	//const int Reserved = 4;
+	const int WAKEPAD = 5;
+	const int WAKEPOL = 6;
+	//const int Reserved = 7;
+
 	//const int MRF_Reserved = 0x0E;
 	//const int MRF_Reserved = 0x0F;
 	const int MRF_ORDER = 0x10;
@@ -136,6 +148,9 @@ namespace MRF24J40
 	const int MRF_SLPCAL2 = 0x20B;
 	const int MRF_RSSI = 0x210;
 	const int MRF_SLPCON0 = 0x211;
+	const int _SLPCLKEN = 0;
+	const int INTEDGE = 1;
+
 	const int MRF_SLPCON1 = 0x220;
 	const int MRF_WAKETIMEL = 0x222;
 	const int MRF_WAKETIMEH = 0x223;
@@ -169,11 +184,12 @@ namespace MRF24J40
 	const int MRF_UPNONCE11 = 0x24B;
 	const int MRF_UPNONCE12 = 0x24C;
 
-	const int MRF_I_RXIF  = 0b00001000;
-	const int MRF_I_TXNIF = 0b00000001;
+	const int MRF_I_RXIF  = 0x08;
+	const int MRF_I_TXNIF = 0x01;
 
 	const int MRF_FLAG_RX = 0x01;
 	const int MRF_FLAG_TX = 0x02;
+	const int MRF_FLAG_TX_OK = 0x04;
 
 
 	template<typename T>
@@ -183,19 +199,19 @@ namespace MRF24J40
 		uint8_t sequence_number;
 		uint16_t panid;
 		uint16_t address;
-		uint8_t rx_buffer[127];
+		//uint8_t rx_buffer[127];
 
-		volatile uint8_t flags_rx_tx;
+		//volatile uint8_t flags_rx_tx;
 
-		mrf_rx_info_t mrf_rx_info;
-		mrf_tx_info_t mrf_tx_info;
+		//mrf_rx_info_t mrf_rx_info;
+		//mrf_tx_info_t mrf_tx_info;
 
 		public:
 		uint8_t ReadRegisterShort(uint8_t address) {
 			this->PrepareSPI();
 			this->SelectDevice();
 			// 0 top for short addressing, 0 bottom for read
-			this->SPISend((address << 1) & 0b01111110);
+			this->SPISend((address << 1) & 0x7e);
 			uint8_t res = this->SPISend(0xff);
 			this->DeselectDevice();
 			return res;
@@ -218,7 +234,7 @@ namespace MRF24J40
 			this->PrepareSPI();
 			this->SelectDevice();
 			// 0 for top address, 1 bottom for write
-			this->SPISend(((address << 1) & 0b01111110) | 0x01);
+			this->SPISend(((address << 1) & 0x7e) | 0x01);
 			this->SPISend(data);
 			this->DeselectDevice();
 		}
@@ -243,22 +259,31 @@ namespace MRF24J40
 		void SetAddress(uint16_t address16) {
 			WriteRegisterShort(MRF_SADRH, address16 >> 8);
 			WriteRegisterShort(MRF_SADRL, address16 & 0xff);
+			this->address = address16;
 		}
 
+
+		void UploadDataPacket(char *data, uint8_t len)
+		{
+			uint8_t i = 0;
+			while (len--)
+				WriteRegisterLong(i++, *data++);
+		}
+		
 		/**
 		* Simple send 16, with acks, not much of anything.. assumes src16 and local pan only.
 		* @param data
 		*/
-		void SendData(uint16_t dest16, uint8_t len, char * data) {
+		void SendData(uint16_t dest16, char *data, uint8_t len) {
 
 			uint8_t i = 0;
 			WriteRegisterLong(i++, 9);  // header length
 			WriteRegisterLong(i++, 9 + len); //+2 is because module seems to ignore 2 bytes after the header?!
 
 			// 0 | pan compression | ack | no security | no data pending | data frame[3 bits]
-			WriteRegisterLong(i++, 0b01100001); // first byte of Frame Control
+			WriteRegisterLong(i++, 0x61); // first byte of Frame Control
 			// 16 bit source, 802.15.4 (2003), 16 bit dest,
-			WriteRegisterLong(i++, 0b10001000); // second byte of frame control
+			WriteRegisterLong(i++, 0x88); // second byte of frame control
 			WriteRegisterLong(i++, sequence_number++);  // sequence number
 
 			WriteRegisterLong(i++, panid & 0xff);  // dest panid
@@ -277,9 +302,15 @@ namespace MRF24J40
 			WriteRegisterShort(MRF_TXNCON, (1<<MRF_TXNACKREQ | 1<<MRF_TXNTRIG));
 		}
 
-		void EnableInterrupts(void) {
-			// interrupts for rx and tx normal complete
-			WriteRegisterShort(MRF_INTCON, 0b11110110);
+		void EnableInterrupts(uint8_t risingEdge) {
+			WriteRegisterShort(MRF_INTCON, 0xf6);
+
+			uint8_t v = ReadRegisterLong(MRF_SLPCON0);
+			if (risingEdge)
+				v |= (1 << INTEDGE);
+			else
+				v &= (1 << INTEDGE);
+			WriteRegisterLong(MRF_SLPCON0, v);
 		}
 
 		void SetChannel(uint8_t channel) {
@@ -294,13 +325,12 @@ namespace MRF24J40
 				;
 		}
 
-		void Init(uint16_t panid, uint16_t address, uint8_t channel)
+		void Initialize(uint16_t panid, uint16_t address, uint8_t channel)
 		{
 			// Initialize basic stuff
 			sequence_number = 1;
-			flags_rx_tx = 0;
-			panid = 0;
-			address = 0;
+			this->panid = 0;
+			this->address = 0;
 			
 			// Now initialize the radio
 			SoftwareReset();
@@ -311,6 +341,7 @@ namespace MRF24J40
 			WriteRegisterLong(MRF_RFCON0, 0x03); // – Initialize RFOPT = 0x03.
 			WriteRegisterLong(MRF_RFCON1, 0x01); // – Initialize VCOOPT = 0x02.
 			WriteRegisterLong(MRF_RFCON2, 0x80); // – Enable PLL (PLLEN = 1).
+			SetTransmissionPower(0); // RFCON3
 			WriteRegisterLong(MRF_RFCON6, 0x90); // – Initialize TXFIL = 1 and 20MRECVR = 1.
 			WriteRegisterLong(MRF_RFCON7, 0x80); // – Initialize SLPCLKSEL = 0x2 (100 kHz Internal oscillator).
 			WriteRegisterLong(MRF_RFCON8, 0x10); // – Initialize RFVCO = 1.
@@ -320,13 +351,70 @@ namespace MRF24J40
 			WriteRegisterShort(MRF_BBREG2, 0x80); // Set CCA mode to ED
 			WriteRegisterShort(MRF_CCAEDTH, 0x60); // – Set CCA ED threshold.
 			WriteRegisterShort(MRF_BBREG6, 0x40); // – Set appended RSSI value to RXFIFO.
-			EnableInterrupts();
+			EnableInterrupts(1);
 			SetPANId(panid);
 			SetAddress(address);
 			SetChannel(channel);
 			// max power is by default.. just leave it...
 			//Set transmitter power - See “REGISTER 2-62: RF CONTROL 3 REGISTER (ADDRESS: 0x203)”.
+			FlushRXFIFO();
 			RFStateMachineReset();
+
+			//SetCoordinator();
+			//SetDataOnlyMode();
+		}
+
+		void SetCoordinator()
+		{
+			WriteRegisterShort(MRF_RXMCR, 1 << COORD);
+		}
+
+		void FlushRXFIFO()
+		{
+			WriteRegisterShort(MRF_RXFLUSH, 1 << RXFLUSH);
+		}
+
+		void SetDataOnlyMode()
+		{
+			WriteRegisterShort(MRF_RXFLUSH, 1 << DATAONLY);
+		}
+
+		void SetTransmissionPower(uint8_t power)
+		{
+			char p;
+
+			if(power > (-10))
+				p = 0;
+			else if(power > (-20))
+			{
+				p = (1<<6);
+				power += 10;
+			}
+			else if(power > (-30))
+			{
+				p = (1<<7);
+				power += 20;
+			}
+			else
+			{
+				p = (1<<7) | (1<<6);
+				power += 30;
+			}
+
+			if(power <= (-6))
+				p |= (1<<5) | (1<<4) | (1<<3);
+			else if(power == (-5))
+				p |= (1<<5) | (1<<4);
+			else if(power == (-4))
+				p |= (1<<5) | (1<<3);
+			else if(power == (-3))
+				p |= (1<<5);
+			else if(power == (-2))
+				p |= (1<<4) | (1<<3);
+			else if(power == (-1))
+				p |= (1<<4);
+
+			WriteRegisterLong(MRF_RFCON3, p);
 		}
 
 		void RFStateMachineReset()
@@ -336,61 +424,80 @@ namespace MRF24J40
 			_delay_us(192); // delay at least 192usec
 		}
 
+		MACPacketInput *ReadPacket()
+		{
+			// read out the packet data...
+			uint8_t payloadLength = ReadRegisterLong(0x300) - 9 - 2; // 9 is the header length, 2 is lqi+rssi at the end
+			MACPacketInput *p = new MACPacketInput(payloadLength);
+			if (p)
+			{
+				p->destinationAddress = (((uint16_t)ReadRegisterLong(0x300 + 6)) << 8) | ReadRegisterLong(0x300 + 7);
+				p->sourceAddress = (((uint16_t)ReadRegisterLong(0x300 + 8)) << 8) | ReadRegisterLong(0x300 + 9);
+			
+				// Read payload
+				uint16_t idx = 0x300 + 1 + 9; // 1 is frame length, 9 is MAC header length
+				for (int i = 0; i < p->payloadLength; i++, idx++)
+					p->payload[i] = ReadRegisterLong(idx);
+			
+				// Read lqi and RSSI
+				p->lqi = ReadRegisterLong(idx++);
+				p->rssi = ReadRegisterLong(idx);
+			}
+
+			WriteRegisterShort(MRF_BBREG1, 0x00);  // RXDECINV - enable receiver
+
+			return p;
+		}
 		/**
 		* Call this from within an interrupt handler connected to the MRFs output
 		* interrupt pin.  It handles reading in any data from the module, and letting it
 		* continue working.
 		* Only the most recent data is ever kept.
 		*/
-		void InterruptHandler(void) {
+		uint8_t InterruptHandler(void) {
 			uint8_t last_interrupt = ReadRegisterShort(MRF_INTSTAT);
+			uint8_t rx_tx_status = 0;
+			
 			if (last_interrupt & MRF_I_RXIF) {
-				flags_rx_tx |= MRF_FLAG_RX;
+				rx_tx_status |= 1 << RX;
 				
-				// read out the packet data...
 				WriteRegisterShort(MRF_BBREG1, 0x04);  // RXDECINV - disable receiver
-				uint8_t frame_length = ReadRegisterLong(0x300);  // read start of rxfifo for
-				int rb_ptr = 0;
-				for (int i = 1; i <= frame_length; i++) {
-					rx_buffer[rb_ptr++] = ReadRegisterLong(0x300 + i);
-				}
-				mrf_rx_info.frame_length = frame_length;
-				mrf_rx_info.lqi = ReadRegisterLong(0x300 + frame_length + 1);
-				mrf_rx_info.rssi = ReadRegisterLong(0x300 + frame_length + 2);
-
-				WriteRegisterShort(MRF_BBREG1, 0x00);  // RXDECINV - enable receiver
 			}
+			
 			if (last_interrupt & MRF_I_TXNIF) {
-				flags_rx_tx |= MRF_FLAG_TX;
+				rx_tx_status |= 1 << TX;
 				
 				uint8_t tmp = ReadRegisterShort(MRF_TXSTAT);
+				
 				// 1 means it failed, we want 1 to mean it worked.
-				mrf_tx_info.tx_ok = !(tmp & ~(1 << TXNSTAT));
-				mrf_tx_info.retries = tmp >> 6;
-				mrf_tx_info.channel_busy = (tmp & (1 << CCAFAIL));
+				rx_tx_status |= ~(tmp & (1 << TXNSTAT)) ? (1 << TX_OK) : 0x00;
+				rx_tx_status |= tmp >> 6;
+				rx_tx_status |= (tmp & (1 << CCAFAIL)) ? (1 << CHANNEL_BUSY) : 0x00;
 			}
+			
+			return rx_tx_status;
 		}
 
 
 		/**
 		* Call this function periodically, it will invoke your nominated handlers
 		*/
-		void CheckTxRxFlags
-		(
-		void (*rx_handler) (mrf_rx_info_t *rxinfo, uint8_t *rxbuffer),
-		void (*tx_handler) (mrf_tx_info_t *txinfo)
-		)
-		{
-			if (flags_rx_tx & MRF_FLAG_RX) {
-				flags_rx_tx &= ~MRF_FLAG_RX;
-				rx_handler(&mrf_rx_info, rx_buffer);
-			}
-			
-			if (flags_rx_tx & MRF_FLAG_TX ) {
-				flags_rx_tx &= ~MRF_FLAG_TX;
-				tx_handler(&mrf_tx_info);
-			}
-		}
+		//void CheckTxRxFlags
+		//(
+		//void (*rx_handler) (mrf_rx_info_t *rxinfo, uint8_t *rxbuffer),
+		//void (*tx_handler) (mrf_tx_info_t *txinfo)
+		//)
+		//{
+			//if (flags_rx_tx & MRF_FLAG_RX) {
+				//flags_rx_tx &= ~MRF_FLAG_RX;
+				//rx_handler(&mrf_rx_info, rx_buffer);
+			//}
+			//
+			//if (flags_rx_tx & MRF_FLAG_TX ) {
+				//flags_rx_tx &= ~MRF_FLAG_TX;
+				//tx_handler(&mrf_tx_info);
+			//}
+		//}
 
 		void ImmediateSleep()
 		{
@@ -404,14 +511,15 @@ namespace MRF24J40
 			WriteRegisterShort(MRF_SLPACK, (1 << SLPACK));
 		}
 
-		void ImmediateWakeSPI()
+		void ImmediateWakeSPI(bool wait2ms)
 		{
 			// Wake up with registers
 			uint8_t wakecon = ReadRegisterShort(MRF_WAKECON);
 			WriteRegisterShort(MRF_WAKECON, wakecon | (1 << REGWAKE));
 			WriteRegisterShort(MRF_WAKECON, wakecon);
 			RFStateMachineReset();
-			_delay_ms(2);
+			if (wait2ms)
+				_delay_ms(2);
 		}
 	};
 }
